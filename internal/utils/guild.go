@@ -12,6 +12,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"discord-bot/internal/services/cache"
 	"discord-bot/internal/services/database"
@@ -23,9 +24,23 @@ type GuildSettings struct {
 	Prefix  string             `bson:"prefix"`
 }
 
+// guildCollection abstracts the methods from mongo.Collection used in this package.
+type guildCollection interface {
+	FindOne(context.Context, interface{}, ...*options.FindOneOptions) *mongo.SingleResult
+	InsertOne(context.Context, interface{}, ...*options.InsertOneOptions) (*mongo.InsertOneResult, error)
+	FindOneAndUpdate(context.Context, interface{}, interface{}, ...*options.FindOneAndUpdateOptions) *mongo.SingleResult
+}
+
+// Functions to allow dependency injection during testing.
+var (
+	getCollection               = func(name string) (guildCollection, error) { return database.GetCollection(name) }
+	getGuildSettingsFromCacheFn = getGuildSettingsFromCache
+	setGuildSettingsToCacheFn   = setGuildSettingsToCache
+)
+
 func CreateGuildSettings(guildID *snowflake.ID) (*GuildSettings, error) {
 	// Check if the guild settings exist in cache
-	settings, err := getGuildSettingsFromCache(*guildID)
+	settings, err := getGuildSettingsFromCacheFn(*guildID)
 	if err == nil && settings != nil {
 		return settings, nil
 	}
@@ -33,7 +48,7 @@ func CreateGuildSettings(guildID *snowflake.ID) (*GuildSettings, error) {
 	// If not found in cache, check from the database
 	settings, err = GetGuildSettings(guildID)
 	if err == nil && settings != nil {
-		err := setGuildSettingsToCache(*settings)
+		err := setGuildSettingsToCacheFn(*settings)
 		if err != nil {
 			log.Printf("Error setting cache for %v , error: %v", settings.GuildID, err)
 		}
@@ -44,7 +59,7 @@ func CreateGuildSettings(guildID *snowflake.ID) (*GuildSettings, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	collection, err := database.GetCollection("guild_settings")
+	collection, err := getCollection("guild_settings")
 	if err != nil {
 		return nil, fmt.Errorf("error getting MongoDB collection: %w", err)
 	}
@@ -59,7 +74,7 @@ func CreateGuildSettings(guildID *snowflake.ID) (*GuildSettings, error) {
 		return nil, fmt.Errorf("error inserting new guild settings: %w", err)
 	}
 
-	err = setGuildSettingsToCache(*settings)
+	err = setGuildSettingsToCacheFn(*settings)
 	if err != nil {
 		log.Printf("Warning: failed to cache new guild settings: %v", err)
 	}
@@ -69,13 +84,13 @@ func CreateGuildSettings(guildID *snowflake.ID) (*GuildSettings, error) {
 
 func GetGuildSettings(guildID *snowflake.ID) (*GuildSettings, error) {
 	// Get Guild Settings From Cache first
-	settings, err := getGuildSettingsFromCache(*guildID)
+	settings, err := getGuildSettingsFromCacheFn(*guildID)
 	if err == nil && settings != nil {
 		return settings, nil
 	}
 
 	ctx := context.Background()
-	collection, err := database.GetCollection("guild_settings")
+	collection, err := getCollection("guild_settings")
 	if err != nil {
 		return nil, fmt.Errorf("error getting MongoDB collection: %w", err)
 	}
@@ -96,7 +111,7 @@ func GetGuildSettings(guildID *snowflake.ID) (*GuildSettings, error) {
 			return nil, fmt.Errorf("error inserting new guild settings: %w", err)
 		}
 
-		err = setGuildSettingsToCache(*settings)
+		err = setGuildSettingsToCacheFn(*settings)
 		if err != nil {
 			log.Printf("Warning: failed to cache new guild settings: %v", err)
 		}
@@ -107,7 +122,7 @@ func GetGuildSettings(guildID *snowflake.ID) (*GuildSettings, error) {
 	}
 
 	// Successfully found and decoded the settings
-	err = setGuildSettingsToCache(foundSettings)
+	err = setGuildSettingsToCacheFn(foundSettings)
 	if err != nil {
 		log.Printf("Warning: failed to cache guild settings: %v", err)
 	}
@@ -172,7 +187,7 @@ func ChangePrefix(guildID snowflake.ID, newPrefix string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	collection, err := database.GetCollection("guild_settings")
+	collection, err := getCollection("guild_settings")
 	if err != nil {
 		return fmt.Errorf("error: %v", err)
 	}
@@ -191,6 +206,6 @@ func ChangePrefix(guildID snowflake.ID, newPrefix string) error {
 	if err != nil {
 		return fmt.Errorf("error updating document: %v", err)
 	}
-	setGuildSettingsToCache(result)
+	setGuildSettingsToCacheFn(result)
 	return nil
 }
