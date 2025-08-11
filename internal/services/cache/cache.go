@@ -19,7 +19,7 @@ func InitRedis() {
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
 	}
-	redisPasswd := os.Getenv("REDIS_PSSWD")
+	redisPasswd := os.Getenv("REDIS_PASSWD")
 
 	Client = redis.NewClient(&redis.Options{
 		Addr:     redisAddr,
