@@ -24,47 +24,8 @@ type GuildSettings struct {
 }
 
 func CreateGuildSettings(guildID *snowflake.ID) (*GuildSettings, error) {
-	// Check if the guild settings exist in cache
-	settings, err := getGuildSettingsFromCache(*guildID)
-	if err == nil && settings != nil {
-		return settings, nil
-	}
-
-	// If not found in cache, check from the database
-	settings, err = GetGuildSettings(guildID)
-	if err == nil && settings != nil {
-		err := setGuildSettingsToCache(*settings)
-		if err != nil {
-			log.Printf("Error setting cache for %v , error: %v", settings.GuildID, err)
-		}
-		return settings, nil
-	}
-
-	// If not found in both cache and database, create a new entry
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	collection, err := database.GetCollection("guild_settings")
-	if err != nil {
-		return nil, fmt.Errorf("error getting MongoDB collection: %w", err)
-	}
-
-	settings = &GuildSettings{
-		Prefix:  ">>",
-		GuildID: *guildID,
-	}
-
-	_, err = collection.InsertOne(ctx, settings)
-	if err != nil {
-		return nil, fmt.Errorf("error inserting new guild settings: %w", err)
-	}
-
-	err = setGuildSettingsToCache(*settings)
-	if err != nil {
-		log.Printf("Warning: failed to cache new guild settings: %v", err)
-	}
-
-	return settings, nil
+	// GetGuildSettings handles cache retrieval and database lookup
+	return GetGuildSettings(guildID)
 }
 
 func GetGuildSettings(guildID *snowflake.ID) (*GuildSettings, error) {
