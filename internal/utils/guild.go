@@ -12,6 +12,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"discord-bot/internal/services/cache"
 	"discord-bot/internal/services/database"
@@ -187,10 +188,15 @@ func ChangePrefix(guildID snowflake.ID, newPrefix string) error {
 		},
 	}
 	var result GuildSettings
-	err = collection.FindOneAndUpdate(ctx, filter, update).Decode(&result)
-	if err != nil {
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	err = collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&result)
+	if err == mongo.ErrNoDocuments {
+		return fmt.Errorf("guild settings not found for ID: %v", guildID)
+	} else if err != nil {
 		return fmt.Errorf("error updating document: %v", err)
 	}
-	setGuildSettingsToCache(result)
+	if err := setGuildSettingsToCache(result); err != nil {
+		return fmt.Errorf("failed to cache guild settings: %w", err)
+	}
 	return nil
 }
